@@ -1,20 +1,18 @@
-**Welcome to Rahul Auto Market** 
+# Car Dealer Platform
 
-**About**
+This repository is now split into two parts:
 
-This is a standalone local car marketplace app.
+- `frontend/` - Vite + React application
+- `backend/` - Express backend skeleton
 
-This project contains everything you need to run your app locally.
+## Commands
 
-**Edit the code in your local development environment**
+- `npm run install:all` - install dependencies for both frontend and backend
+- `npm run dev` - start the frontend development server
+- `npm run build` - build the frontend
+- `npm run start` - start the backend server
 
-Changes made locally are reflected in your local development server.
+## Folder structure
 
-**Prerequisites:** 
-
-1. Open the project directory
-2. Install dependencies: `npm install`
-
-Run the app: `npm run dev`
-
-Build for production: `npm run build`
+- `frontend/` contains the existing React app files and configuration
+- `backend/` contains a minimal Express server and backend package configuration
