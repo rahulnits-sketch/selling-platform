@@ -258,7 +258,7 @@ export default function AdminCarForm({ onSuccess }) {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Uploaded images are stored in the database so they stay available after Render redeploys.
+          For production on Render, configure Cloudinary so uploaded images are stored outside the app server.
         </p>
       </div>
 

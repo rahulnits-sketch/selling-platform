@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import express from "express";
+import { v2 as cloudinary } from "cloudinary";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -7,23 +8,44 @@ const { Pool } = pg;
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || CLIENT_ORIGIN)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "rahul#123";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "12345";
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 const DATABASE_URL = process.env.DATABASE_URL;
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || "";
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || "";
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || "";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL is required. Create a PostgreSQL database before starting the backend.");
 }
 
+const cloudinaryEnabled = Boolean(
+  CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET
+);
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: DATABASE_URL.includes("render.com")
-    ? { rejectUnauthorized: false }
-    : process.env.PGSSLMODE === "require"
+  ssl:
+    DATABASE_URL.includes("render.com") || process.env.PGSSLMODE === "require"
       ? { rejectUnauthorized: false }
       : false,
 });
+
+if (cloudinaryEnabled) {
+  cloudinary.config({
+    cloud_name: CLOUDINARY_CLOUD_NAME,
+    api_key: CLOUDINARY_API_KEY,
+    api_secret: CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+}
 
 const defaultCars = [
   {
@@ -115,7 +137,11 @@ const defaultCars = [
 
 app.use(express.json({ limit: "15mb" }));
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", CLIENT_ORIGIN);
+  const requestOrigin = req.headers.origin;
+  if (!requestOrigin || CLIENT_ORIGINS.includes(requestOrigin)) {
+    res.header("Access-Control-Allow-Origin", requestOrigin || CLIENT_ORIGINS[0] || "*");
+  }
+  res.header("Vary", "Origin");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   if (req.method === "OPTIONS") {
@@ -128,13 +154,19 @@ app.get("/", (req, res) => {
   res.json({
     message: "Car Dealer Backend is running",
     health: "/api/health",
+    cloudinary: cloudinaryEnabled,
   });
 });
 
 app.get("/api/health", async (req, res, next) => {
   try {
     await pool.query("SELECT 1");
-    return res.json({ status: "ok", time: new Date().toISOString() });
+    return res.json({
+      status: "ok",
+      time: new Date().toISOString(),
+      database: "connected",
+      uploads: cloudinaryEnabled ? "cloudinary" : IS_PRODUCTION ? "misconfigured" : "inline-dev",
+    });
   } catch (error) {
     return next(error);
   }
@@ -143,7 +175,7 @@ app.get("/api/health", async (req, res, next) => {
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body || {};
 
-  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+  if (username !== ADMIN_USERNAME || !isValidAdminPassword(password)) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
@@ -349,7 +381,7 @@ app.delete("/api/admin/contact", requireAuth, async (req, res, next) => {
   }
 });
 
-app.post("/api/uploads", requireAuth, (req, res) => {
+app.post("/api/uploads", requireAuth, async (req, res, next) => {
   const { filename, contentType, data } = req.body || {};
 
   if (!filename || !data) {
@@ -362,14 +394,21 @@ app.post("/api/uploads", requireAuth, (req, res) => {
   }
 
   const base64 = String(data).includes(",") ? String(data).split(",").pop() : String(data);
-  return res.status(201).json({
-    file_url: `data:${mimeType};base64,${base64}`,
-  });
+
+  try {
+    const fileUrl = await uploadImage({ base64, mimeType, filename });
+    return res.status(201).json({
+      file_url: fileUrl,
+      provider: cloudinaryEnabled ? "cloudinary" : "inline",
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 app.use((err, req, res, next) => {
   console.error(err);
-  return res.status(500).json({ message: "Internal server error" });
+  return res.status(500).json({ message: err.message || "Internal server error" });
 });
 
 async function start() {
@@ -412,6 +451,16 @@ async function initializeDatabase() {
       phone TEXT NOT NULL DEFAULT ''
     )
   `);
+
+  await pool.query(`
+    ALTER TABLE cars
+    ADD CONSTRAINT cars_status_check
+    CHECK (status IN ('available', 'sold'))
+  `).catch((error) => {
+    if (!String(error.message).includes("already exists")) {
+      throw error;
+    }
+  });
 
   await pool.query(
     `INSERT INTO admin_contact (id, phone)
@@ -511,6 +560,24 @@ function verifyToken(token) {
   }
 }
 
+function isValidAdminPassword(password) {
+  const provided = String(password || "");
+
+  if (ADMIN_PASSWORD_HASH) {
+    const digest = crypto.createHash("sha256").update(provided).digest("hex");
+    const providedBuffer = Buffer.from(digest, "utf8");
+    const expectedBuffer = Buffer.from(ADMIN_PASSWORD_HASH, "utf8");
+
+    if (providedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+  }
+
+  return provided === ADMIN_PASSWORD;
+}
+
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -608,4 +675,33 @@ function resolveMimeType(filename, contentType) {
   }
 
   return null;
+}
+
+async function uploadImage({ base64, mimeType, filename }) {
+  if (cloudinaryEnabled) {
+    const result = await cloudinary.uploader.upload(`data:${mimeType};base64,${base64}`, {
+      folder: "car-dealer",
+      public_id: `${Date.now()}-${slugify(filename)}`,
+      resource_type: "image",
+      overwrite: false,
+    });
+
+    return result.secure_url;
+  }
+
+  if (IS_PRODUCTION) {
+    throw new Error(
+      "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET."
+    );
+  }
+
+  return `data:${mimeType};base64,${base64}`;
+}
+
+function slugify(value) {
+  return String(value || "image")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "image";
 }

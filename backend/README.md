@@ -5,8 +5,9 @@ This Express backend provides:
 - admin authentication
 - PostgreSQL-backed car listing CRUD
 - admin contact management
-- deploy-safe image storage as data URLs
+- Cloudinary-backed image uploads in production
 - automatic schema creation and seed data on first boot
+- optional hashed admin password support
 
 ## Run
 
@@ -26,11 +27,21 @@ The API listens on `http://localhost:4000` by default.
 
 - `PORT`
 - `CLIENT_ORIGIN`
+- `CLIENT_ORIGINS`
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
+- `ADMIN_PASSWORD_HASH`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
+## Generate admin password hash
+
+`npm run hash:password -- your-password`
 
 ## Render notes
 
 - Create a Render PostgreSQL database and copy its `External Database URL` into `DATABASE_URL`
 - Point `CLIENT_ORIGIN` to your frontend domain
-- Uploaded images are stored as data URLs in PostgreSQL, so they survive deploys and restarts
+- Add Cloudinary credentials so uploaded images are stored outside Render's ephemeral filesystem
+- Prefer `ADMIN_PASSWORD_HASH` over a plain admin password in production
