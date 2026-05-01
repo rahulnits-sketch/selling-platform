@@ -257,6 +257,9 @@ export default function AdminCarForm({ onSuccess }) {
             />
           )}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Uploaded images are stored in the database so they stay available after Render redeploys.
+        </p>
       </div>
 
       <div className="space-y-2">

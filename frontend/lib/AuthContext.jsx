@@ -1,35 +1,35 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { appClient, AUTH_STORAGE_KEY } from "@/api/localDataClient";
 
 const AuthContext = createContext(null);
-const AUTH_STORAGE_KEY = "seller-auth";
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    if (typeof window === "undefined") return null;
-
-    const stored = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return !!window.localStorage.getItem(AUTH_STORAGE_KEY);
-  });
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState({
-    id: "local-seller-app",
-    public_settings: { mode: "local" },
+    id: "seller-app",
+    public_settings: { mode: "api" },
   });
 
   useEffect(() => {
-    const bootstrapAuth = () => {
+    const bootstrapAuth = async () => {
       setIsLoadingAuth(true);
+
       try {
-        const stored = window.localStorage.getItem(AUTH_STORAGE_KEY);
+        const stored = typeof window !== "undefined"
+          ? window.localStorage.getItem(AUTH_STORAGE_KEY)
+          : null;
 
         if (stored) {
-          setUser(JSON.parse(stored));
+          const session = JSON.parse(stored);
+          const currentUser = await appClient.auth.me();
+          setUser({
+            ...currentUser,
+            token: session.token,
+          });
           setIsAuthenticated(true);
           setAuthError(null);
         } else {
@@ -37,36 +37,47 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(false);
         }
       } catch (error) {
-        console.error("Local auth bootstrap failed:", error);
+        console.error("Auth bootstrap failed:", error);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(AUTH_STORAGE_KEY);
+        }
         setUser(null);
         setIsAuthenticated(false);
         setAuthError({
           type: "unknown",
-          message: error.message || "Failed to initialize local mode",
+          message: error.message || "Failed to initialize auth",
         });
       } finally {
         setIsLoadingAuth(false);
       }
     };
 
-    bootstrapAuth();
+    void bootstrapAuth();
   }, []);
 
   const login = async (username, password) => {
-    if (username === "rahul#123" && password === "12345") {
-      const newUser = { username: "admin" };
-      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
-      setUser(newUser);
+    try {
+      const result = await appClient.auth.login({ username, password });
+      const session = {
+        token: result.token,
+        user: result.user,
+      };
+
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+      setUser({
+        ...result.user,
+        token: result.token,
+      });
       setIsAuthenticated(true);
       setAuthError(null);
       return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || "Login failed" };
     }
-
-    return { success: false, message: "Invalid credentials" };
   };
 
   const logout = () => {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    appClient.auth.logout();
     setUser(null);
     setIsAuthenticated(false);
   };

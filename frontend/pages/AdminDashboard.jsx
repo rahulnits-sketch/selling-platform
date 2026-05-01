@@ -97,7 +97,7 @@ export default function AdminDashboard() {
               <Button
                 size="sm"
                 onClick={() => saveAdminContact.mutate(adminPhone)}
-                disabled={saveAdminContact.isLoading}
+                disabled={saveAdminContact.isPending}
               >
                 Save
               </Button>
@@ -105,7 +105,7 @@ export default function AdminDashboard() {
                 size="sm"
                 variant="outline"
                 onClick={() => clearAdminContact.mutate()}
-                disabled={clearAdminContact.isLoading}
+                disabled={clearAdminContact.isPending}
               >
                 Remove
               </Button>

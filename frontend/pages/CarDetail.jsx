@@ -10,12 +10,11 @@ export default function CarDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { data: cars = [], isLoading } = useQuery({
-    queryKey: ["cars"],
-    queryFn: () => appClient.entities.Car.list("-created_date", 100),
+  const { data: car, isLoading, isError } = useQuery({
+    queryKey: ["car", id],
+    queryFn: () => appClient.entities.Car.get(id),
+    enabled: !!id,
   });
-
-  const car = cars.find((c) => c.id === id);
 
   const contactPhone = car?.phone || "+15125550123";
   const contactWhatsAppNumber = contactPhone.replace(/\D/g, "");
@@ -48,7 +47,7 @@ export default function CarDetail() {
     );
   }
 
-  if (!car) {
+  if (isError || !car) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
         <h2 className="text-xl font-semibold">Car not found</h2>
