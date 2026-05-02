@@ -1,4 +1,35 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000").replace(/\/$/, "");
+function resolveApiBaseUrl() {
+  const envBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+  if (envBaseUrl) {
+    return envBaseUrl.replace(/\/$/, "");
+  }
+
+  if (typeof window === "undefined") {
+    return "http://localhost:4000";
+  }
+
+  const { hostname, origin, protocol } = window.location;
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:4000";
+  }
+
+  if (hostname.endsWith(".onrender.com")) {
+    const parts = hostname.split(".");
+    const subdomain = parts[0] || "";
+    const backendSubdomain = subdomain
+      .replace(/-frontend$/, "-backend")
+      .replace(/frontend/, "backend");
+
+    if (backendSubdomain && backendSubdomain !== subdomain) {
+      return `${protocol}//${backendSubdomain}.${parts.slice(1).join(".")}`;
+    }
+  }
+
+  return origin.replace(/\/$/, "");
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const AUTH_STORAGE_KEY = "seller-auth";
 
 function getStoredAuth() {
@@ -38,10 +69,18 @@ async function request(path, options = {}) {
     headers.Authorization = `Bearer ${auth.token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    throw new Error(
+      `Unable to reach the server at ${API_BASE_URL}. Check the deployed backend URL and CORS settings.`
+    );
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")

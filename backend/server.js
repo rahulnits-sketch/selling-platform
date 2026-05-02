@@ -7,7 +7,8 @@ const { Pool } = pg;
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const isLocalEnvironment = process.env.NODE_ENV !== "production";
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || (isLocalEnvironment ? "http://localhost:5173" : "");
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || CLIENT_ORIGIN)
   .split(",")
   .map((origin) => origin.trim())
@@ -138,8 +139,13 @@ const defaultCars = [
 app.use(express.json({ limit: "15mb" }));
 app.use((req, res, next) => {
   const requestOrigin = req.headers.origin;
-  if (!requestOrigin || CLIENT_ORIGINS.includes(requestOrigin)) {
-    res.header("Access-Control-Allow-Origin", requestOrigin || CLIENT_ORIGINS[0] || "*");
+  const allowAnyOrigin = CLIENT_ORIGINS.length === 0;
+
+  if (!requestOrigin || allowAnyOrigin || CLIENT_ORIGINS.includes(requestOrigin)) {
+    res.header(
+      "Access-Control-Allow-Origin",
+      requestOrigin || CLIENT_ORIGINS[0] || "*"
+    );
   }
   res.header("Vary", "Origin");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
