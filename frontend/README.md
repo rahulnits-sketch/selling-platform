@@ -18,3 +18,12 @@ Changes made locally are reflected in your local development server.
 Run the app: `npm run dev`
 
 Build for production: `npm run build`
+
+**Vercel deployment**
+
+- Set the project Root Directory to `frontend`
+- Framework Preset: `Vite`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Add `VITE_API_BASE_URL` in Vercel Environment Variables and point it to your deployed backend URL
+- Keep `vercel.json` in this folder so React Router routes rewrite to `index.html`
